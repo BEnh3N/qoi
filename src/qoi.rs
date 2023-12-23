@@ -240,7 +240,7 @@ fn qoi_decode(
     };
 
     let chunks_len = size - size_of_val(&QOI_PADDING) as usize;
-    for px_pos in (0..px_len).step_by(channels) {
+    for _ in (0..px_len).step_by(channels) {
         if run > 0 {
             run -= 1;
         } else if p < chunks_len {
