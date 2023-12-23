@@ -1,29 +1,46 @@
-use image::{io::Reader, ColorType, GenericImageView};
+use std::{env::args, process::exit};
+
+use image::{io::Reader, GenericImageView};
+use qoi::{qoi_write, QOIHeader, QOI_SRGB};
 
 mod qoi;
-use qoi::{qoi_write, QOIHeader};
 
 fn main() {
-    let img = Reader::open("dice.png").unwrap().decode().unwrap();
+    let args = args().collect::<Vec<String>>();
 
-    // Get information for header
-    let width = img.width();
-    let height = img.height();
-    let channels = match img.color() {
-        ColorType::Rgb8 => 3,
-        ColorType::Rgba8 => 4,
-        _ => 4,
-    };
-    let colorspace = 0_u8;
+    if args.len() < 3 {
+        println!("Usage: qoi <infile> <outfile>");
+        println!("Examples:");
+        println!("   qoi input.png output.qoi");
+        println!("   qoi input.qoi output.png");
+        exit(1);
+    }
 
-    let header = QOIHeader {
-        width,
-        height,
-        channels,
-        colorspace,
-    };
+    let pixels: Vec<[u8; 4]>;
+    let w;
+    let h;
+    let channels;
 
-    let data: Vec<[u8; 4]> = img.pixels().map(|p| p.2 .0).collect();
-    let size = qoi_write("dice2.qoi", data, header);
-    println!("{} bytes written", size);
+    if args[1].ends_with(".png") {
+        let img = Reader::open(&args[1]).unwrap().decode().unwrap();
+        w = img.width();
+        h = img.height();
+        channels = 4;
+
+        pixels = img.pixels().map(|x| x.2.0).collect();
+    } else {
+        println!("Invalid input file type!");
+        exit(1);
+    }
+
+    // TODO: Implement reading from QOI files and writing to PNG files
+
+    if args[2].ends_with(".qoi") {
+        qoi_write(&args[2], pixels, QOIHeader {
+            width: w,
+            height: h,
+            channels,
+            colorspace: QOI_SRGB
+        });
+    }
 }

@@ -10,6 +10,9 @@ pub struct QOIHeader {
                       // 1 = all channels linear
 }
 
+pub const QOI_SRGB: u8 = 0;
+// pub const QOI_LINEAR: u8 = 1;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct QOIRGBA {
     rgba: [u8; 4],
