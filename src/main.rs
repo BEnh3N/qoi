@@ -5,7 +5,7 @@ use std::{
 };
 
 use image::{codecs::png::PngEncoder, io::Reader, ColorType, ImageEncoder};
-use qoi::{qoi_write, QOIHeader, QOI_SRGB};
+use qoi::{qoi_read, qoi_write, QOIHeader, QOI_SRGB};
 
 mod qoi;
 
@@ -36,6 +36,17 @@ fn main() -> ExitCode {
         };
 
         pixels = img.as_bytes().to_vec();
+    } else if args[1].ends_with(".qoi") {
+        let mut header = QOIHeader {
+            width: 0,
+            height: 0,
+            channels: 0,
+            colorspace: 0,
+        };
+        pixels = qoi_read(&args[1], &mut header, 0);
+        w = header.width;
+        h = header.height;
+        channels = header.channels;
     } else {
         eprintln!("Invalid input file type!");
         return ExitCode::FAILURE;
