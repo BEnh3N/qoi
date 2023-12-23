@@ -1,7 +1,5 @@
 use std::{fs::File, io::Write, mem::size_of_val};
 
-use image::Rgba;
-
 pub struct QOIHeader {
     pub width: u32,   // image width in pixels (BE)
     pub height: u32,  // image height in pixels (BE)
@@ -15,15 +13,19 @@ pub const QOI_SRGB: u8 = 0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct QOIRGBA {
-    rgba: [u8; 4],
-    // v: usize,
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
 }
 
 impl QOIRGBA {
     fn new() -> Self {
         Self {
-            rgba: [0, 0, 0, 0],
-            // v: 0,
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0,
         }
     }
 }
@@ -36,10 +38,7 @@ const QOI_OP_RGB: u8 = 0xfe; /* 11111110 */
 const QOI_OP_RGBA: u8 = 0xff; /* 11111111 */
 
 const fn qoi_color_hash(c: &QOIRGBA) -> usize {
-    c.rgba[0] as usize * 3
-        + c.rgba[1] as usize * 5
-        + c.rgba[2] as usize * 7
-        + c.rgba[3] as usize * 11
+    c.r as usize * 3 + c.g as usize * 5 + c.b as usize * 7 + c.a as usize * 11
 }
 const QOI_MAGIC: u32 =
     (('q' as u32) << 24) | (('o' as u32) << 16) | (('i' as u32) << 8) | ('f' as u32);
@@ -48,7 +47,7 @@ const QOI_HEADER_SIZE: usize = 14;
 const QOI_PIXELS_MAX: u32 = 400000000;
 const QOI_PADDING: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 1];
 
-pub fn qoi_write(filename: &str, data: Vec<[u8; 4]>, header: QOIHeader) -> usize {
+pub fn qoi_write(filename: &str, data: Vec<u8>, header: QOIHeader) -> usize {
     let mut file = File::create(filename).unwrap();
 
     let mut size = 0;
@@ -60,7 +59,7 @@ pub fn qoi_write(filename: &str, data: Vec<[u8; 4]>, header: QOIHeader) -> usize
     size
 }
 
-fn qoi_encode(data: Vec<[u8; 4]>, header: QOIHeader, out_len: &mut usize) -> Option<Vec<u8>> {
+fn qoi_encode(data: Vec<u8>, header: QOIHeader, out_len: &mut usize) -> Option<Vec<u8>> {
     if data.is_empty()
         || header.width == 0
         || header.height == 0
@@ -89,16 +88,25 @@ fn qoi_encode(data: Vec<[u8; 4]>, header: QOIHeader, out_len: &mut usize) -> Opt
 
     let mut run = 0;
     let mut px_prev = QOIRGBA {
-        rgba: Rgba::<u8>::from([0, 0, 0, 255]).0,
+        r: 0,
+        b: 0,
+        g: 0,
+        a: 255,
     };
     let mut px = px_prev.clone();
 
-    let px_len = header.width as usize * header.height as usize;
-    let px_end = px_len;
-    // let channels = header.channels;
+    let channels = header.channels as usize;
+    let px_len = header.width as usize * header.height as usize * channels;
+    let px_end = px_len - channels;
 
-    for px_pos in 0..px_end {
-        px.rgba = data[px_pos];
+    for px_pos in (0..px_len).step_by(channels) {
+        px.r = data[px_pos];
+        px.g = data[px_pos + 1];
+        px.b = data[px_pos + 2];
+
+        if channels == 4 {
+            px.a = data[px_pos + 3];
+        }
 
         if px == px_prev {
             run += 1;
@@ -119,10 +127,10 @@ fn qoi_encode(data: Vec<[u8; 4]>, header: QOIHeader, out_len: &mut usize) -> Opt
             } else {
                 index[index_pos] = px;
 
-                if px.rgba[3] == px_prev.rgba[3] {
-                    let vr = px.rgba[0] as i16 - px_prev.rgba[0] as i16;
-                    let vg = px.rgba[1] as i16 - px_prev.rgba[1] as i16;
-                    let vb = px.rgba[2] as i16 - px_prev.rgba[2] as i16;
+                if px.a == px_prev.a {
+                    let vr = px.r as i16 - px_prev.r as i16;
+                    let vg = px.g as i16 - px_prev.g as i16;
+                    let vb = px.b as i16 - px_prev.b as i16;
 
                     let vg_r = vr - vg;
                     let vg_b = vb - vg;
@@ -140,16 +148,16 @@ fn qoi_encode(data: Vec<[u8; 4]>, header: QOIHeader, out_len: &mut usize) -> Opt
                         bytes.push(((vg_r + 8) as u8) << 4 | (vg_b + 8) as u8);
                     } else {
                         bytes.push(QOI_OP_RGB);
-                        bytes.push(px.rgba[0]);
-                        bytes.push(px.rgba[1]);
-                        bytes.push(px.rgba[2]);
+                        bytes.push(px.r);
+                        bytes.push(px.g);
+                        bytes.push(px.b);
                     }
                 } else {
                     bytes.push(QOI_OP_RGBA);
-                    bytes.push(px.rgba[0]);
-                    bytes.push(px.rgba[1]);
-                    bytes.push(px.rgba[2]);
-                    bytes.push(px.rgba[3]);
+                    bytes.push(px.r);
+                    bytes.push(px.g);
+                    bytes.push(px.b);
+                    bytes.push(px.a);
                 }
             }
         }
@@ -159,8 +167,6 @@ fn qoi_encode(data: Vec<[u8; 4]>, header: QOIHeader, out_len: &mut usize) -> Opt
     for i in 0..size_of_val(&QOI_PADDING) {
         bytes.push(QOI_PADDING[i]);
     }
-
-    // bytes.
 
     *out_len = bytes.len();
     Some(bytes)

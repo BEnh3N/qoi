@@ -1,11 +1,15 @@
-use std::{env::args, process::exit};
+use std::{
+    env::args,
+    fs::File,
+    process::{exit, ExitCode},
+};
 
-use image::{io::Reader, GenericImageView};
+use image::{codecs::png::PngEncoder, io::Reader, ColorType, ImageEncoder};
 use qoi::{qoi_write, QOIHeader, QOI_SRGB};
 
 mod qoi;
 
-fn main() {
+fn main() -> ExitCode {
     let args = args().collect::<Vec<String>>();
 
     if args.len() < 3 {
@@ -16,7 +20,7 @@ fn main() {
         exit(1);
     }
 
-    let pixels: Vec<[u8; 4]>;
+    let pixels: Vec<u8>;
     let w;
     let h;
     let channels;
@@ -25,22 +29,39 @@ fn main() {
         let img = Reader::open(&args[1]).unwrap().decode().unwrap();
         w = img.width();
         h = img.height();
-        channels = 4;
+        channels = match img.color() {
+            ColorType::Rgb8 => 3,
+            ColorType::Rgba8 => 4,
+            _ => 4,
+        };
 
-        pixels = img.pixels().map(|x| x.2.0).collect();
+        pixels = img.as_bytes().to_vec();
     } else {
-        println!("Invalid input file type!");
-        exit(1);
+        eprintln!("Invalid input file type!");
+        return ExitCode::FAILURE;
+    }
+    // TODO: Implement reading from QOI files
+
+    // TODO: is this really the best way to encode pngs... it's ugly
+    if args[2].ends_with(".png") {
+        let encoder = PngEncoder::new(File::create(&args[2]).unwrap());
+        let color_type = match channels {
+            3 => ColorType::Rgb8,
+            _ => ColorType::Rgba8,
+        };
+        encoder.write_image(&pixels, w, h, color_type).unwrap();
+    } else if args[2].ends_with(".qoi") {
+        qoi_write(
+            &args[2],
+            pixels,
+            QOIHeader {
+                width: w,
+                height: h,
+                channels,
+                colorspace: QOI_SRGB,
+            },
+        );
     }
 
-    // TODO: Implement reading from QOI files and writing to PNG files
-
-    if args[2].ends_with(".qoi") {
-        qoi_write(&args[2], pixels, QOIHeader {
-            width: w,
-            height: h,
-            channels,
-            colorspace: QOI_SRGB
-        });
-    }
+    ExitCode::SUCCESS
 }
